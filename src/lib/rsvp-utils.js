@@ -69,11 +69,21 @@ export function getWordDelay(
     wordsPerMinute,
     pauseOnPunctuation = true,
     punctuationMultiplier = 2,
+    wordLengthWPMMultiplier = 0,
 ) {
     if (!word || typeof word !== "string") return 60000 / wordsPerMinute;
     if (!wordsPerMinute || wordsPerMinute <= 0) return 200; // Default fallback
 
-    const baseDelay = 60000 / wordsPerMinute;
+    var baseDelay = 60000 / wordsPerMinute;
+
+    // Longer pause for longer word
+    const longWordThreshold = 12;
+    if (word.length >= longWordThreshold) {
+        // for every character above 12, add wordLengthWPMMultiplier percentage points to delay
+        baseDelay *= 1 +
+            ((wordLengthWPMMultiplier / 100) *
+                (word.length - longWordThreshold));
+    }
 
     if (pauseOnPunctuation) {
         // Longer pause for sentence-ending punctuation
@@ -86,6 +96,7 @@ export function getWordDelay(
         }
     }
 
+    console.log(baseDelay);
     return baseDelay;
 }
 
