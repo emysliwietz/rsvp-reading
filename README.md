@@ -28,6 +28,9 @@ The app uses **Optimal Recognition Point (ORP)** highlighting - the red letter i
 - **Punctuation pauses**: Configurable extra pause on sentence-ending punctuation
 - **Periodic pauses**: Optional pause every N words for comprehension
 - **Progress tracking**: Visual progress bar and time remaining
+- **Save progress**: Save your reading session and resume later
+- **Jump to position**: Skip to any word number or percentage in the text
+- **Clickable progress bar**: Click anywhere on the progress bar to jump to that position
 - **Keyboard shortcuts**: Full keyboard control for hands-free reading
 - **Dark theme**: Easy on the eyes with black background
 
@@ -91,6 +94,8 @@ npm run preview
 | `Arrow Down` | Decrease speed (-25 WPM) |
 | `Arrow Left` | Go back one word |
 | `Arrow Right` | Skip forward one word |
+| `G` | Open jump to position dialog |
+| `Ctrl+S` / `Cmd+S` | Save current progress |
 
 ### Settings
 

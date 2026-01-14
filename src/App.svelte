@@ -7,6 +7,13 @@
     shouldPauseAtWord
   } from './lib/rsvp-utils.js';
   import { parseFile } from './lib/file-parsers.js';
+  import {
+    saveSession,
+    loadSession,
+    clearSession,
+    hasSession,
+    getSessionSummary
+  } from './lib/progress-storage.js';
   import RSVPDisplay from './lib/components/RSVPDisplay.svelte';
   import Controls from './lib/components/Controls.svelte';
   import Settings from './lib/components/Settings.svelte';
@@ -24,6 +31,10 @@
   let progress = 0;
   let isLoadingFile = false;
   let loadingMessage = '';
+  let showJumpTo = false;
+  let jumpToValue = '';
+  let savedSessionInfo = null;
+  let showSavedSessionPrompt = false;
 
   // Settings
   let wordsPerMinute = 300;
@@ -162,6 +173,87 @@
     }
   }
 
+  function saveCurrentSession() {
+    if (words.length === 0) return false;
+    return saveSession({
+      text,
+      currentWordIndex,
+      totalWords: words.length,
+      settings: {
+        wordsPerMinute,
+        fadeEnabled,
+        fadeDuration,
+        pauseOnPunctuation,
+        punctuationPauseMultiplier,
+        pauseAfterWords,
+        pauseDuration
+      }
+    });
+  }
+
+  function loadSavedSession() {
+    const session = loadSession();
+    if (!session) return false;
+
+    text = session.text;
+    parseText();
+    currentWordIndex = session.currentWordIndex;
+    progress = (currentWordIndex / words.length) * 100;
+
+    if (session.settings) {
+      wordsPerMinute = session.settings.wordsPerMinute ?? wordsPerMinute;
+      fadeEnabled = session.settings.fadeEnabled ?? fadeEnabled;
+      fadeDuration = session.settings.fadeDuration ?? fadeDuration;
+      pauseOnPunctuation = session.settings.pauseOnPunctuation ?? pauseOnPunctuation;
+      punctuationPauseMultiplier = session.settings.punctuationPauseMultiplier ?? punctuationPauseMultiplier;
+      pauseAfterWords = session.settings.pauseAfterWords ?? pauseAfterWords;
+      pauseDuration = session.settings.pauseDuration ?? pauseDuration;
+    }
+
+    showSavedSessionPrompt = false;
+    return true;
+  }
+
+  function clearSavedSession() {
+    clearSession();
+    showSavedSessionPrompt = false;
+    savedSessionInfo = null;
+  }
+
+  function jumpToWord(value) {
+    if (!value || words.length === 0) return;
+
+    let targetIndex;
+    const trimmed = value.trim();
+
+    if (trimmed.endsWith('%')) {
+      const percent = parseFloat(trimmed.slice(0, -1));
+      if (!isNaN(percent)) {
+        targetIndex = Math.floor((Math.max(0, Math.min(100, percent)) / 100) * words.length);
+      }
+    } else {
+      const num = parseInt(trimmed, 10);
+      if (!isNaN(num)) {
+        targetIndex = Math.max(0, Math.min(words.length, num));
+      }
+    }
+
+    if (targetIndex !== undefined) {
+      currentWordIndex = targetIndex;
+      progress = (currentWordIndex / words.length) * 100;
+    }
+
+    showJumpTo = false;
+    jumpToValue = '';
+  }
+
+  function handleProgressClick(event) {
+    const percentage = event.detail.percentage;
+    const targetIndex = Math.floor((percentage / 100) * words.length);
+    currentWordIndex = Math.max(0, Math.min(words.length, targetIndex));
+    progress = (currentWordIndex / words.length) * 100;
+  }
+
   function handleKeydown(e) {
     if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
 
@@ -173,11 +265,28 @@
         else start();
         break;
       case 'Escape':
-        if (showSettings || showTextInput) {
+        if (showJumpTo) {
+          showJumpTo = false;
+          jumpToValue = '';
+        } else if (showSettings || showTextInput) {
           showSettings = false;
           showTextInput = false;
+        } else if (showSavedSessionPrompt) {
+          showSavedSessionPrompt = false;
         } else {
           stop();
+        }
+        break;
+      case 'KeyG':
+        if (!isPlaying && !showSettings && !showTextInput) {
+          e.preventDefault();
+          showJumpTo = !showJumpTo;
+        }
+        break;
+      case 'KeyS':
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          saveCurrentSession();
         }
         break;
       case 'ArrowUp':
@@ -208,6 +317,14 @@
   onMount(() => {
     parseText();
     window.addEventListener('keydown', handleKeydown);
+
+    // Check for saved session
+    if (hasSession()) {
+      savedSessionInfo = getSessionSummary();
+      if (savedSessionInfo) {
+        showSavedSessionPrompt = true;
+      }
+    }
   });
 
   onDestroy(() => {
@@ -225,7 +342,27 @@
       <div class="header-actions">
         <button
           class="icon-btn"
-          on:click={() => { showTextInput = !showTextInput; showSettings = false; }}
+          on:click={() => { showJumpTo = !showJumpTo; showSettings = false; showTextInput = false; }}
+          title="Jump to word (G)"
+          class:active={showJumpTo}
+        >
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/>
+          </svg>
+        </button>
+        <button
+          class="icon-btn"
+          on:click={saveCurrentSession}
+          title="Save progress (Ctrl+S)"
+          disabled={words.length === 0}
+        >
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/>
+          </svg>
+        </button>
+        <button
+          class="icon-btn"
+          on:click={() => { showTextInput = !showTextInput; showSettings = false; showJumpTo = false; }}
           title="Load Content"
           class:active={showTextInput}
         >
@@ -235,7 +372,7 @@
         </button>
         <button
           class="icon-btn"
-          on:click={() => { showSettings = !showSettings; showTextInput = false; }}
+          on:click={() => { showSettings = !showSettings; showTextInput = false; showJumpTo = false; }}
           title="Settings"
           class:active={showSettings}
         >
@@ -276,6 +413,47 @@
     </div>
   {/if}
 
+  {#if showJumpTo && !isFocusMode}
+    <div class="panel-overlay" on:click|self={() => showJumpTo = false}>
+      <div class="jump-to-panel">
+        <h3>Jump to position</h3>
+        <p class="jump-hint">Enter word number (e.g., 150) or percentage (e.g., 50%)</p>
+        <form on:submit|preventDefault={() => jumpToWord(jumpToValue)}>
+          <input
+            type="text"
+            bind:value={jumpToValue}
+            placeholder="Word # or %"
+            autofocus
+          />
+          <div class="jump-actions">
+            <button type="button" class="secondary" on:click={() => showJumpTo = false}>Cancel</button>
+            <button type="submit" class="primary">Go</button>
+          </div>
+        </form>
+        <div class="quick-jumps">
+          <button on:click={() => jumpToWord('0')}>Start</button>
+          <button on:click={() => jumpToWord('25%')}>25%</button>
+          <button on:click={() => jumpToWord('50%')}>50%</button>
+          <button on:click={() => jumpToWord('75%')}>75%</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  {#if showSavedSessionPrompt && savedSessionInfo}
+    <div class="panel-overlay">
+      <div class="saved-session-panel">
+        <h3>Resume reading?</h3>
+        <p>You have a saved session at word {savedSessionInfo.currentWordIndex} of {savedSessionInfo.totalWords}</p>
+        <p class="saved-time">Saved {new Date(savedSessionInfo.savedAt).toLocaleString()}</p>
+        <div class="session-actions">
+          <button class="secondary" on:click={clearSavedSession}>Start Fresh</button>
+          <button class="primary" on:click={loadSavedSession}>Resume</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
   <!-- Main Display -->
   <div class="display-area">
     <RSVPDisplay
@@ -295,6 +473,8 @@
       wpm={wordsPerMinute}
       {timeRemaining}
       minimal={isFocusMode}
+      clickable={!isPlaying}
+      on:seek={handleProgressClick}
     />
 
     <div class="controls-area">
@@ -317,6 +497,8 @@
         <kbd>Esc</kbd> Stop
         <kbd>↑↓</kbd> Speed
         <kbd>←→</kbd> Skip
+        <kbd>G</kbd> Jump
+        <kbd>Ctrl+S</kbd> Save
       </div>
       <div class="touch-controls mobile-only">
         <button class="touch-btn" on:click={() => currentWordIndex = Math.max(0, currentWordIndex - 5)} title="Back 5 words">
@@ -544,5 +726,126 @@
     .mobile-only {
       display: flex;
     }
+  }
+
+  /* Jump to panel */
+  .jump-to-panel,
+  .saved-session-panel {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 1.5rem;
+    max-width: 320px;
+    width: 100%;
+  }
+
+  .jump-to-panel h3,
+  .saved-session-panel h3 {
+    margin: 0 0 0.5rem 0;
+    color: #fff;
+    font-size: 1.1rem;
+  }
+
+  .jump-hint {
+    color: #666;
+    font-size: 0.85rem;
+    margin: 0 0 1rem 0;
+  }
+
+  .jump-to-panel input {
+    width: 100%;
+    padding: 0.75rem;
+    background: #111;
+    border: 1px solid #333;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 1rem;
+    margin-bottom: 1rem;
+    box-sizing: border-box;
+  }
+
+  .jump-to-panel input:focus {
+    outline: none;
+    border-color: #ff4444;
+  }
+
+  .jump-actions,
+  .session-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+  }
+
+  .jump-actions button,
+  .session-actions button {
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+  }
+
+  .jump-actions button.primary,
+  .session-actions button.primary {
+    background: #ff4444;
+    color: #fff;
+  }
+
+  .jump-actions button.primary:hover,
+  .session-actions button.primary:hover {
+    background: #ff6666;
+  }
+
+  .jump-actions button.secondary,
+  .session-actions button.secondary {
+    background: #333;
+    color: #fff;
+  }
+
+  .jump-actions button.secondary:hover,
+  .session-actions button.secondary:hover {
+    background: #444;
+  }
+
+  .quick-jumps {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #333;
+  }
+
+  .quick-jumps button {
+    flex: 1;
+    padding: 0.5rem;
+    background: #222;
+    border: 1px solid #333;
+    border-radius: 4px;
+    color: #888;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: all 0.2s;
+  }
+
+  .quick-jumps button:hover {
+    background: #333;
+    color: #fff;
+  }
+
+  .saved-session-panel p {
+    margin: 0.5rem 0;
+    color: #ccc;
+  }
+
+  .saved-session-panel .saved-time {
+    color: #666;
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+  }
+
+  .icon-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
   }
 </style>

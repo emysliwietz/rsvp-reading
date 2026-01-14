@@ -1,14 +1,36 @@
 <script>
+  import { createEventDispatcher } from 'svelte';
+
   export let progress = 0;
   export let currentWord = 0;
   export let totalWords = 0;
   export let wpm = 300;
   export let timeRemaining = '0:00';
   export let minimal = false;
+  export let clickable = false;
+
+  const dispatch = createEventDispatcher();
+
+  function handleClick(event) {
+    if (!clickable) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const percentage = (x / rect.width) * 100;
+    dispatch('seek', { percentage: Math.max(0, Math.min(100, percentage)) });
+  }
 </script>
 
 <div class="progress-wrapper" class:minimal>
-  <div class="progress-container">
+  <div
+    class="progress-container"
+    class:clickable
+    on:click={handleClick}
+    role={clickable ? "slider" : undefined}
+    aria-valuenow={clickable ? progress : undefined}
+    aria-valuemin={clickable ? 0 : undefined}
+    aria-valuemax={clickable ? 100 : undefined}
+    tabindex={clickable ? 0 : undefined}
+  >
     <div class="progress-bar" style="width: {progress}%"></div>
   </div>
 
@@ -31,6 +53,16 @@
     background: #222;
     border-radius: 2px;
     overflow: hidden;
+  }
+
+  .progress-container.clickable {
+    cursor: pointer;
+    height: 6px;
+    transition: height 0.2s ease;
+  }
+
+  .progress-container.clickable:hover {
+    height: 10px;
   }
 
   .minimal .progress-container {
